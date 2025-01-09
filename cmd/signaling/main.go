@@ -9,6 +9,9 @@ import (
 )
 
 type config struct {
+	Log struct {
+		Level slog.Level `default:"info"`
+	}
 }
 
 func main() {
@@ -29,6 +32,13 @@ func run(_ context.Context) error {
 	if err := envconfig.Process("", &cfg); err != nil {
 		return fmt.Errorf("failed to process environment variables: %w", err)
 	}
+
+	// ****************************************************
+	// * Setup logger
+	// ****************************************************
+	slog.Info("configuring logging...")
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.Log.Level}))
+	slog.SetDefault(logger)
 
 	slog.Info("all good!")
 	return nil
