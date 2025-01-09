@@ -65,6 +65,10 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("failed to start signaling server: %w", err)
 	case <-done:
 		slog.Info("shutting down signaling server...")
+
+		ctx, cancel := context.WithTimeout(ctx, cfg.Signaling.ShutdownTimeout)
+		defer cancel()
+
 		if err := server.Shutdown(ctx); err != nil {
 			return fmt.Errorf("failed to shutdown signaling server: %w", err)
 		}

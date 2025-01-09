@@ -5,10 +5,12 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"time"
 )
 
 type Config struct {
-	Addr string `split_words:"true" default:":8080"`
+	Addr            string        `default:":8080"`
+	ShutdownTimeout time.Duration `split_words:"true" default:"5s"`
 }
 
 func SetupServer(ctx context.Context, cfg Config, h http.Handler) http.Server {
