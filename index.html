@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Video Test</title>
+</head>
+<body>
+<h1>WebRTC Video Test</h1>
+<video id="localVideo" autoplay muted></video>
+<video id="remoteVideo" autoplay></video>
+
+<script>
+    const localVideo = document.getElementById("localVideo");
+    const remoteVideo = document.getElementById("remoteVideo");
+    const signalingServer = new WebSocket("ws://localhost:8080/ws");
+
+    let localStream, peerConnection;
+
+    signalingServer.onmessage = async (message) => {
+        const data = JSON.parse(message.data);
+
+        if (data.type === "answer") {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data));
+        } else if (data.type === "candidate") {
+            await peerConnection.addIceCandidate(data.candidate);
+        }
+    };
+
+    async function startWebRTC() {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        localVideo.srcObject = localStream;
+
+        peerConnection = new RTCPeerConnection();
+
+        // Add local stream tracks to PeerConnection
+        localStream.getTracks().forEach((track) => {
+            peerConnection.addTrack(track, localStream);
+        });
+
+        // Handle remote stream
+        peerConnection.ontrack = (event) => {
+            remoteVideo.srcObject = event.streams[0];
+        };
+
+        // Send ICE candidates to the signaling server
+        peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+                signalingServer.send(JSON.stringify({
+                    type: "candidate",
+                    candidate: event.candidate,
+                }));
+            }
+        };
+
+        // Create and send offer
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+
+        signalingServer.send(JSON.stringify({
+            type: "offer",
+            sdp: offer.sdp,
+        }));
+    }
+
+    signalingServer.onopen = () => {
+        console.log("Connected to signaling server");
+        startWebRTC();
+    };
+</script>
+</body>
+</html>

@@ -3,15 +3,19 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/aviseu/chatroom/internal/app/signaling"
 	"github.com/kelseyhightower/envconfig"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 type config struct {
 	Log struct {
 		Level slog.Level `default:"info"`
 	}
+	Signaling signaling.Config
 }
 
 func main() {
@@ -23,7 +27,7 @@ func main() {
 	}
 }
 
-func run(_ context.Context) error {
+func run(ctx context.Context) error {
 	// ****************************************************
 	// * Load environment variables
 	// ****************************************************
@@ -37,8 +41,34 @@ func run(_ context.Context) error {
 	// * Setup logger
 	// ****************************************************
 	slog.Info("configuring logging...")
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.Log.Level}))
-	slog.SetDefault(logger)
+	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.Log.Level}))
+	slog.SetDefault(log)
+
+	// ****************************************************
+	// * Setup signaling server
+	// ****************************************************
+	slog.Info("setting up signaling server...")
+	server := signaling.SetupServer(ctx, cfg.Signaling, signaling.SetupHandler(log))
+	serverError := make(chan error, 1)
+	go func() {
+		serverError <- server.ListenAndServe()
+	}()
+
+	// ****************************************************
+	// * Shutdown
+	// ****************************************************
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case err := <-serverError:
+		return fmt.Errorf("failed to start signaling server: %w", err)
+	case <-done:
+		slog.Info("shutting down signaling server...")
+		if err := server.Shutdown(ctx); err != nil {
+			return fmt.Errorf("failed to shutdown signaling server: %w", err)
+		}
+	}
 
 	slog.Info("all good!")
 	return nil
